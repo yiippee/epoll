@@ -95,7 +95,7 @@ int main(void)
         //nready为返回的事件个数
         nready = epoll_wait(epollfd, &*events.begin(), static_cast<int>(events.size()), -1);
         if (nready == -1) {
-            if (errno == EINTR) continue;
+            if (errno == EINTR) continue;// 被信号中断
             ERR_EXIT("epoll_wait");
         }
         if (nready == 0) continue;//没有事件发生
@@ -163,9 +163,25 @@ int main(void)
                     fflush(stdout);
                     //write(connfd, buf, strlen(buf));
                 }
+
+                // 安全读完了数据
+                std::cout << "we have read from the client : ";
+                //设置用于写操作的文件描述符
+                event.data.fd = connfd;
+                //设置用于注测的写操作事件
+                event.events = EPOLLOUT | EPOLLET;
+                //修改sockfd上要处理的事件为EPOLLOUT
+                epoll_ctl(epollfd, EPOLL_CTL_MOD, connfd, &event);
             } else if (events[i].events & EPOLLOUT) {
                 //有数据待发送，写socket
-
+                char* buf = "write...";
+                write(connfd, buf, strlen(buf));
+                //设置用于读操作的文件描述符
+                event.data.fd = connfd;
+                //设置用于注测的读操作事件
+                event.events = EPOLLIN | EPOLLET;
+                //修改sockfd上要处理的事件为EPOLIN
+                epoll_ctl(epollfd, EPOLL_CTL_MOD, connfd, &event);
             }
         }
     }
