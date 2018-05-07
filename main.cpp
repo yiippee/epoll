@@ -41,6 +41,38 @@ typedef std::vector<struct epoll_event> EventList;
         exit(EXIT_FAILURE); \
     } while(0)
 
+
+ssize_t socket_write(int sockfd, const char* buffer, size_t buflen)
+{
+    ssize_t tmp;
+    size_t total = buflen;
+    const char* p = buffer;
+
+    while(1)
+    {
+        tmp = write(sockfd, p, total);
+        if(tmp < 0)
+        {
+            // 当send收到信号时,可以继续写,但这里返回-1.
+            if(errno == EINTR) return -1;
+            // 当socket是非阻塞时,如返回此错误,表示写缓冲队列已满,
+            // 在这里做延时后再重试.
+            if(errno == EAGAIN)
+            {
+                usleep(1000);
+                continue;
+            }
+            return -1;
+        }
+        if((size_t)tmp == total) return buflen;
+
+         total -= tmp;
+         p += tmp;
+    }
+
+    return tmp;//返回已写字节数
+}
+
 int main(void)
 {
     signal(SIGPIPE, SIG_IGN);
@@ -79,7 +111,7 @@ int main(void)
 
     struct epoll_event event;
     event.data.fd = listenfd;
-    //默认出发模式是LT模式（电平出发模式），或上EPOLLET变成ET模式（边沿触发）
+    //默认触发模式是LT模式（电平出发模式），或上EPOLLET变成ET模式（边沿触发）
     event.events = EPOLLIN;
     //把listenfd事件添加到epollfd进行管理
     epoll_ctl(epollfd, EPOLL_CTL_ADD, listenfd, &event);
@@ -164,22 +196,24 @@ int main(void)
                     //write(connfd, buf, strlen(buf));
                 }
 
-                // 安全读完了数据
+                // 完全读完了数据
                 std::cout << "we have read from the client : ";
                 //设置用于写操作的文件描述符
                 event.data.fd = connfd;
-                //设置用于注测的写操作事件
-                event.events = EPOLLOUT | EPOLLET;
+                //设置用于注册的写操作事件
+                event.events |= EPOLLOUT;
                 //修改sockfd上要处理的事件为EPOLLOUT
                 epoll_ctl(epollfd, EPOLL_CTL_MOD, connfd, &event);
             } else if (events[i].events & EPOLLOUT) {
                 //有数据待发送，写socket
-                char* buf = "write...";
-                write(connfd, buf, strlen(buf));
-                //设置用于读操作的文件描述符
+                char* buf = "write...\n";
+                //int n = write(connfd, buf, strlen(buf));
+                int n = socket_write(connfd, buf, strlen(buf));
+                //设置用于写操作的文件描述符
                 event.data.fd = connfd;
-                //设置用于注测的读操作事件
-                event.events = EPOLLIN | EPOLLET;
+                //设置用于注册的写操作事件
+                event.events &= ~EPOLLOUT;
+                //event.events = EPOLLOUT;
                 //修改sockfd上要处理的事件为EPOLIN
                 epoll_ctl(epollfd, EPOLL_CTL_MOD, connfd, &event);
             }
