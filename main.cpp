@@ -51,6 +51,8 @@ ssize_t socket_write(int sockfd, const char* buffer, size_t buflen)
     while(1)
     {
         tmp = write(sockfd, p, total);
+        // 只要tmp大于0，说明内核发送缓冲区还可以写，则一直写，直到缓冲区满，
+        // 满了则会返回 eagain 再试一下
         if(tmp < 0)
         {
             // 当send收到信号时,可以继续写,但这里返回-1.
@@ -59,6 +61,7 @@ ssize_t socket_write(int sockfd, const char* buffer, size_t buflen)
             // 在这里做延时后再重试.
             if(errno == EAGAIN)
             {
+                // 其实这里不应该休眠的，可以为该fd设置EPOLLOUT事件。（水平触发， 边缘触发好像不一样）
                 usleep(1000);
                 continue;
             }
